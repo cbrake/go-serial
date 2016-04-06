@@ -75,10 +75,6 @@ func makeTermios2(options OpenOptions) (*termios2, error) {
 	vtime := uint(round(float64(options.InterCharacterTimeout)/100.0) * 100)
 	vmin := options.MinimumReadSize
 
-	if vmin == 0 && vtime < 100 {
-		return nil, errors.New("invalid values for InterCharacterTimeout and MinimumReadSize")
-	}
-
 	if vtime > 25500 {
 		return nil, errors.New("invalid value for InterCharacterTimeout")
 	}
