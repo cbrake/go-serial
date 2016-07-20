@@ -120,10 +120,6 @@ func convertOptions(options OpenOptions) (*termios, error) {
 	vtime := uint(round(float64(options.InterCharacterTimeout)/100.0) * 100)
 	vmin := options.MinimumReadSize
 
-	if vmin == 0 && vtime < 100 {
-		return nil, errors.New("Invalid values for InterCharacterTimeout and MinimumReadSize.")
-	}
-
 	if vtime > 25500 {
 		return nil, errors.New("Invalid value for InterCharacterTimeout.")
 	}
@@ -227,7 +223,7 @@ func openInternal(options OpenOptions) (io.ReadWriteCloser, error) {
 		syscall.SYS_IOCTL,
 		uintptr(file.Fd()),
 		uintptr(kIOSSIOSPEED),
-		uintptr(unsafe.Pointer(&options.BaudRate)));
+		uintptr(unsafe.Pointer(&options.BaudRate)))
 
 	if errno2 != 0 {
 		return nil, os.NewSyscallError("SYS_IOCTL", errno2)
