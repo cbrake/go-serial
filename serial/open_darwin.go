@@ -40,16 +40,19 @@ type tcflag_t uint64
 
 // sys/termios.h
 const (
-	kCS5    = 0x00000000
-	kCS6    = 0x00000100
-	kCS7    = 0x00000200
-	kCS8    = 0x00000300
-	kCLOCAL = 0x00008000
-	kCREAD  = 0x00000800
-	kCSTOPB = 0x00000400
-	kIGNPAR = 0x00000004
-	kPARENB = 0x00001000
-	kPARODD = 0x00002000
+	kCS5        = 0x00000000
+	kCS6        = 0x00000100
+	kCS7        = 0x00000200
+	kCS8        = 0x00000300
+	kCLOCAL     = 0x00008000
+	kCREAD      = 0x00000800
+	kCSTOPB     = 0x00000400
+	kIGNPAR     = 0x00000004
+	kPARENB     = 0x00001000
+	kPARODD     = 0x00002000
+	kCCTS_OFLOW = 0x00010000
+	kCRTS_IFLOW = 0x00020000
+	kCRTSCTS    = kCCTS_OFLOW | kCRTS_IFLOW
 
 	kNCCS = 20
 
@@ -128,9 +131,16 @@ func convertOptions(options OpenOptions) (*termios, error) {
 	result.c_cc[kVTIME] = cc_t(vtime / 100)
 	result.c_cc[kVMIN] = cc_t(vmin)
 
-	// Set an arbitrary baudrate. We'll set the real one later.
-	result.c_ispeed = 14400
-	result.c_ospeed = 14400
+	if !IsStandardBaudRate(options.BaudRate) {
+		// Non-standard baud-rates cannot be set via the standard IOCTL.
+		//
+		// Set an arbitrary baudrate. We'll set the real one later.
+		result.c_ispeed = 14400
+		result.c_ospeed = 14400
+	} else {
+		result.c_ispeed = speed_t(options.BaudRate)
+		result.c_ospeed = speed_t(options.BaudRate)
+	}
 
 	// Data bits
 	switch options.DataBits {
@@ -173,6 +183,10 @@ func convertOptions(options OpenOptions) (*termios, error) {
 		result.c_cflag |= kPARENB
 	default:
 		return nil, errors.New("Invalid setting for ParityMode.")
+	}
+
+	if options.RTSCTSFlowControl {
+		result.c_cflag |= kCRTSCTS
 	}
 
 	return &result, nil
@@ -218,19 +232,21 @@ func openInternal(options OpenOptions) (io.ReadWriteCloser, error) {
 		return nil, err
 	}
 
-	// Set baud rate with the IOSSIOSPEED ioctl, to support non-standard speeds.
-	r2, _, errno2 := syscall.Syscall(
-		syscall.SYS_IOCTL,
-		uintptr(file.Fd()),
-		uintptr(kIOSSIOSPEED),
-		uintptr(unsafe.Pointer(&options.BaudRate)))
+	if !IsStandardBaudRate(options.BaudRate) {
+		// Set baud rate with the IOSSIOSPEED ioctl, to support non-standard speeds.
+		r2, _, errno2 := syscall.Syscall(
+			syscall.SYS_IOCTL,
+			uintptr(file.Fd()),
+			uintptr(kIOSSIOSPEED),
+			uintptr(unsafe.Pointer(&options.BaudRate)))
 
-	if errno2 != 0 {
-		return nil, os.NewSyscallError("SYS_IOCTL", errno2)
-	}
+		if errno2 != 0 {
+			return nil, os.NewSyscallError("SYS_IOCTL", errno2)
+		}
 
-	if r2 != 0 {
-		return nil, errors.New("Unknown error from SYS_IOCTL.")
+		if r2 != 0 {
+			return nil, errors.New("Unknown error from SYS_IOCTL.")
+		}
 	}
 
 	// We're done.
